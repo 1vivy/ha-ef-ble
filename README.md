@@ -379,3 +379,62 @@ The requests to ecoflow usually ends up in support department and generally igno
 way to get support from them. That gave me right to take it in my own hands and use my knowledge &
 time to make my own way. There is no intention to harm any people anyhow - just to make sure you
 will be safe in emergency situation, which is critical for such a product.
+
+## SNMP bridge for NUT / `snmp-ups`
+
+Some EcoFlow models (including Delta 3 non-plus) are not exposed as USB HID UPS devices. If you want to integrate them with NUT, you can run a small SNMP bridge that publishes selected EcoFlow BLE entities through UPS-MIB OIDs.
+
+This repository includes `tools/ecoflow_snmp_agent.py` for this purpose.
+
+### SNMP control switch in Home Assistant
+
+This integration now creates a helper switch entity named **SNMP Export** for battery devices. You can use that switch to control whether the bridge exports live values (on) or zeroes (off).
+
+Pass that switch to the script via `--entity-enabled`.
+
+### Requirements
+
+- Home Assistant with this integration configured and working
+- A Home Assistant long-lived access token
+- Python package: `pysnmp`
+
+### Example
+
+Using explicit entity IDs:
+
+```bash
+python tools/ecoflow_snmp_agent.py \
+  --ha-url http://homeassistant.local:8123 \
+  --ha-token "YOUR_LONG_LIVED_TOKEN" \
+  --community public \
+  --bind-port 16161 \
+  --entity-enabled switch.delta_3_snmp_export \
+  --entity-battery-charge sensor.delta_3_battery_level \
+  --entity-input-voltage sensor.delta_3_ac_input_voltage \
+  --entity-output-voltage sensor.delta_3_ac_output_voltage \
+  --entity-output-current sensor.delta_3_ac_output_current
+```
+
+Using standardized names with a shared prefix:
+
+```bash
+python tools/ecoflow_snmp_agent.py \
+  --ha-url http://homeassistant.local:8123 \
+  --ha-token "YOUR_LONG_LIVED_TOKEN" \
+  --entity-prefix delta_3 \
+  --entity-enabled switch.delta_3_snmp_export
+```
+
+Then configure NUT using `snmp-ups` against this host/port and map the same community string.
+
+### OIDs exposed
+
+- `1.3.6.1.2.1.33.1.2.4.0` (`upsEstimatedChargeRemaining`)
+- `1.3.6.1.2.1.33.1.2.3.0` (`upsEstimatedMinutesRemaining`)
+- `1.3.6.1.2.1.33.1.3.3.1.3.1` (`upsInputVoltage.1`)
+- `1.3.6.1.2.1.33.1.4.4.1.2.1` (`upsOutputVoltage.1`)
+- `1.3.6.1.2.1.33.1.4.4.1.3.1` (`upsOutputCurrent.1`, tenths of amps)
+- `1.3.6.1.2.1.33.1.4.4.1.5.1` (`upsOutputPercentLoad.1`)
+
+> Note: if your model uses different sensor names, pass explicit `--entity-*` arguments.
+

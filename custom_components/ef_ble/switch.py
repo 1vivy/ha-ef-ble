@@ -7,10 +7,17 @@ from homeassistant.components.switch import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from . import DeviceConfigEntry
 from .eflib import DeviceBase
 from .entity import EcoflowEntity
+
+SNMP_CONTROL_SWITCH = SwitchEntityDescription(
+    key="snmp_export",
+    name="SNMP Export",
+    icon="mdi:access-point-network",
+)
 
 SWITCH_TYPES = [
     SwitchEntityDescription(
@@ -136,6 +143,9 @@ async def async_setup_entry(
         and hasattr(device, f"enable_{switch_desc.key}")
     ]
 
+    if hasattr(device, "battery_level"):
+        switches.append(EcoflowSnmpControlEntity(device, SNMP_CONTROL_SWITCH))
+
     if switches:
         async_add_entities(switches)
 
@@ -177,3 +187,32 @@ class EcoflowSwitchEntity(EcoflowEntity, SwitchEntity):
     @property
     def is_on(self):
         return self._on_off_state if self._on_off_state is not None else False
+
+
+class EcoflowSnmpControlEntity(EcoflowEntity, SwitchEntity, RestoreEntity):
+    """A local control switch that can be used by the SNMP bridge script."""
+
+    def __init__(
+        self, device: DeviceBase, entity_description: SwitchEntityDescription
+    ) -> None:
+        super().__init__(device)
+        self.entity_description = entity_description
+        self._attr_unique_id = f"{device.name}_{entity_description.key}"
+        self._attr_is_on = False
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        if last_state := await self.async_get_last_state():
+            self._attr_is_on = last_state.state == "on"
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        self._attr_is_on = True
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        self._attr_is_on = False
+        self.async_write_ha_state()
+
+    @property
+    def available(self) -> bool:
+        return True
